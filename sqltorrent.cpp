@@ -13,24 +13,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+#if defined(WIN32) || defined(_WIN32)
+#define EXPORT __declspec(dllexport)
+#else
+#define EXPORT
+#include <unistd.h>
+#endif
 
-#include "sqlite3ext.h"
+#include "sqlite3.h"
 
-SQLITE_EXTENSION_INIT1
-
-#define BOOST_ASIO_SEPARATE_COMPILATION
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <memory>
 #include <cassert>
 #include <libtorrent/session.hpp>
 #include <libtorrent/alert_types.hpp>
 #include <libtorrent/torrent_info.hpp>
 #include <libtorrent/version.hpp>
 
+using namespace libtorrent;
+
 namespace {
 
 struct context
 {
 	context()
-		: base(NULL), session(libtorrent::fingerprint("SL", 0, 1, 0, 0))
+		: base(NULL), session()
 	{}
 
 	sqlite3_vfs* base;
@@ -109,6 +118,7 @@ int vfs_device_characteristics(sqlite3_file*)
 int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 const iOfst)
 {
 	using namespace libtorrent;
+  std::cout << "READ" << std::endl;
 
 	torrent_vfs_file* f = (torrent_vfs_file*)file;
 	int const piece_size = vfs_sector_size(file);
@@ -177,6 +187,7 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 {
 	using namespace libtorrent;
 
+  std::cout << "OPEN" << std::endl;
 	assert(zName);
 	context* ctx = (context*)vfs->pAppData;
 	torrent_vfs_file* f = (torrent_vfs_file*)file;
@@ -185,32 +196,37 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 	f->base.pMethods = &torrent_vfs_io_methods;
 	f->session = &ctx->session;
 
-	ctx->session.set_alert_mask(alert::status_notification);
+	// ctx->session.set_alert_mask(alert::status_notification);
 
-	{
-		session_settings s = ctx->session.settings();
-		s.enable_incoming_utp = false;
-		s.enable_outgoing_utp = false;
-		s.max_out_request_queue = 4;
-		
-		ctx->session.set_settings(s);
-	}
+	// {
+	// 	session_settings s = ctx->session.settings();
+	// 	s.enable_incoming_utp = false;
+	// 	s.enable_outgoing_utp = false;
+	// 	s.max_out_request_queue = 4;
+	//
+	// 	ctx->session.set_settings(s);
+	// }
+	//
+	// {
+	// 	pe_settings pes = ctx->session.get_pe_settings();
+	// 	pes.in_enc_policy = pes.out_enc_policy = pe_settings::disabled;
+	// 	ctx->session.set_pe_settings(pes);
+	// }
 
-	{
-		pe_settings pes = ctx->session.get_pe_settings();
-		pes.in_enc_policy = pes.out_enc_policy = pe_settings::disabled;
-		ctx->session.set_pe_settings(pes);
-	}
+	std::string torrentName = zName;
+	std::string torrentNameOrUrl = torrentName.substr( torrentName.find_last_of("/") + 1 );
 
 	add_torrent_params p;
+
+	p.url = torrentNameOrUrl;
 	p.save_path = ".";
-	error_code ec;
-#if LIBTORRENT_VERSION_NUM < 10100
-	p.ti = new torrent_info(zName, ec);
-#else
-	p.ti = boost::make_shared<torrent_info>(zName, ec);
-#endif
-	assert(!ec);
+// 	error_code ec;
+// #if LIBTORRENT_VERSION_NUM < 10100
+// 	p.ti = new torrent_info(zName, ec);
+// #else
+// 	p.ti = boost::make_shared<torrent_info>(zName, boost::ref(ec), 0);
+// #endif
+// 	assert(!ec);
 	try {
 		f->torrent = ctx->session.add_torrent(p);
 	} catch (libtorrent_exception e) {
@@ -224,6 +240,7 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 	{
 		alert const* a = f->session->wait_for_alert(seconds(10));
 		if (!a) continue;
+    std::cout << a->message() << std::endl;
 
 		if (a->type() != torrent_checked_alert::alert_type)
 		{
@@ -241,6 +258,7 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 
 int torrent_vfs_access(sqlite3_vfs* vfs, const char *zName, int flags, int *pResOut)
 {
+  std::cout << "ACCESS" << std::endl;
 	context* ctx = (context*)vfs->pAppData;
 	int rc = ctx->base->xAccess(ctx->base, zName, flags, pResOut);
 	if (rc != SQLITE_OK) return rc;
@@ -252,43 +270,95 @@ int torrent_vfs_access(sqlite3_vfs* vfs, const char *zName, int flags, int *pRes
 
 extern "C" {
 
-#if defined(_WIN32) && !defined(SQLITE_CORE)
-__declspec(dllexport)
-#endif
-int sqltorrent_init(int make_default)
-{
-	static context ctx;
-	static sqlite3_vfs vfs;
-	if (!ctx.base)
+	EXPORT int sqltorrent_init(int make_default)
 	{
-		ctx.base = sqlite3_vfs_find(nullptr);
-		vfs = *ctx.base;
-		vfs.zName = "torrent";
-		vfs.pAppData = &ctx;
-		vfs.szOsFile = sizeof(torrent_vfs_file);
-		vfs.xOpen = torrent_vfs_open;
-		vfs.xAccess = torrent_vfs_access;
+		static context ctx;
+		static sqlite3_vfs vfs;
+		if (!ctx.base)
+		{
+			ctx.base = sqlite3_vfs_find(nullptr);
+			vfs = *ctx.base;
+			vfs.zName = "torrent";
+			vfs.pAppData = &ctx;
+			vfs.szOsFile = sizeof(torrent_vfs_file);
+			vfs.xOpen = torrent_vfs_open;
+			vfs.xAccess = torrent_vfs_access;
+		}
+
+		sqlite3_vfs_register(&vfs, make_default);
+
+		return SQLITE_OK;
 	}
 
-	sqlite3_vfs_register(&vfs, make_default);
+	EXPORT sqlite3* new_db() {
+	  sqlite3 *db;
+		return db;
+	}
 
-	return SQLITE_OK;
-}
+	EXPORT int sqltorrent_open(
+	  const char *filename,   /* Database filename (UTF-8) */
+	  sqlite3 *db,         /* OUT: SQLite db handle */
+	  const char *zVfs        /* Name of VFS module to use */
+	) {
+	  return sqlite3_open_v2(filename, &db, SQLITE_OPEN_READONLY, zVfs);
+	}
+	// EXPORT int sqlite3_sqltorrent_init(
+	// 	sqlite3 *db,
+	// 	char **pzErrMsg,
+	// 	const sqlite3_api_routines *pApi)
+	// {
+	// 	int rc = SQLITE_OK;
+	// 	SQLITE_EXTENSION_INIT2(pApi);
+	//
+	// 	rc = sqltorrent_init(1);
+	//
+	// 	return rc;
+	// }
 
-#if defined(_WIN32) && !defined(SQLITE_CORE)
-__declspec(dllexport)
-#endif
-int sqlite3_sqltorrent_init(
-	sqlite3 *db,
-	char **pzErrMsg,
-	const sqlite3_api_routines *pApi)
-{
-	int rc = SQLITE_OK;
-	SQLITE_EXTENSION_INIT2(pApi);
+	EXPORT session* new_session() {
+		return new session();
+	}
 
-	rc = sqltorrent_init(1);
+	EXPORT add_torrent_params* new_add_torrent_params() {
+    return new add_torrent_params();
+  }
+	EXPORT void set_url(add_torrent_params *p, char* data) {
+    std::string str = data;
+    p->url = str;
+  }
+	EXPORT void set_save_path(add_torrent_params *p, char* data) {
+    std::string str = data;
+    p->save_path = str;
+  }
+  EXPORT torrent_handle* add_torrent(session *ses, add_torrent_params *p) {
+    libtorrent::error_code ec;
+    torrent_handle th = ses->add_torrent(*p, ec);
+    if (ec) {
+      std::cout << ec.message() << std::endl;
+    }
+    return new torrent_handle(th);
+  }
 
-	return rc;
-}
+	EXPORT void alert_loop(session *ses, void (*callback)(const char *data)) {
+		for (;;) {
+	    std::vector<alert*> alerts;
+	    ses->pop_alerts(&alerts);
 
+	    for (alert const* a : alerts) {
+				callback(a->message().c_str());
+	      // std::cout << a->message() << std::endl;
+	      // if we receive the finished alert or an error, we're done
+	      if (alert_cast<torrent_finished_alert>(a)) {
+	        goto done;
+	      }
+	      if (alert_cast<torrent_error_alert>(a)) {
+	        goto done;
+	      }
+	    }
+	    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	  }
+	  done:
+		callback("done, shutting down");
+	  // std::cout << "done, shutting down" << std::endl;
+	}
 }
