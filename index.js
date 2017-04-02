@@ -14,6 +14,7 @@ var SQLite3 = ffi.Library('./libsqlite3.dylib', {
   'sqlite3_close': [ 'int', [ sqlite3Ptr ] ],
   'sqlite3_changes': [ 'int', [ sqlite3Ptr ]],
   'sqlite3_exec': [ 'int', [ sqlite3Ptr, 'string', sqlite3_exec_callback, 'void *', stringPtr ] ],
+  'sqlite3_errmsg': [ 'string' , [ 'pointer' ]]
 })
 
 var sqltorrent = ffi.Library('sqltorrent.dylib', {
@@ -41,41 +42,75 @@ var ses = sqltorrent.get_session(ctx);
 var db = ref.alloc(sqlite3PtrPtr)
 
 // open the database object
-var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', () => {})
+var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) => {
+  console.log('DB OPENED', ret)
+  // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
+  // pointing to, so we must deref()
+  db = db.deref()
 
+  var rowCount = 0
+  var callback2 = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
+    var obj = {}
 
-var WebSocketServer = require('ws').Server;
-var express = require('express');
-var path = require('path');
-var app = express();
-var server = require('http').createServer();
+    for (var i = 0; i < cols; i++) {
+      var colName = colv.deref()
+      var colData = argv.deref()
+      obj[colName] = colData
+    }
 
-app.use(express.static(path.join(__dirname, '/public')));
+    if (ws)
+      ws.send(JSON.stringify(obj))
 
-var wss = new WebSocketServer({server: server});
-var ws = null
-wss.on('connection', function (_ws) {
-  ws = _ws;
-  console.log('new connection');
-  ws.on('close', function () {
-    console.log('connection close');
-  });
+    rowCount++
 
-  ws.on('message', function incoming(message) {
-    onMessage(message)
-  });
-});
+    return 0
+  })
+
+  var b = new Buffer('test')
+  SQLite3.sqlite3_exec.async(db, 'SELECT * FROM foo;', callback2, b, null, function (err, ret) {
+    if (err) throw err
+    if (ret !== 0) return console.log('error:', SQLite3.sqlite3_errmsg(db))
+    console.log('ok', ret)
+    // console.log('Closing...')
+    // SQLite3.sqlite3_close(db)
+    // fs.unlinkSync(dbName)
+    // fin = true
+  })
+})
+
 
 var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
   // if (ws && (type == 'read_piece_alert' || type == 'piece_finished_alert'))
-  if (ws) ws.send(msg)
+  // if (ws) ws.send(msg)
 });
 sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 
-server.on('request', app);
-server.listen(8080, function () {
-  console.log('Listening on http://localhost:8080');
-});
+// var WebSocketServer = require('ws').Server;
+// var express = require('express');
+// var path = require('path');
+// var app = express();
+// var server = require('http').createServer();
+//
+// app.use(express.static(path.join(__dirname, '/public')));
+//
+// var wss = new WebSocketServer({server: server});
+// var ws = null
+// wss.on('connection', function (_ws) {
+//   ws = _ws;
+//   console.log('new connection');
+//   ws.on('close', function () {
+//     console.log('connection close');
+//   });
+//
+//   ws.on('message', function incoming(message) {
+//     onMessage(message)
+//   });
+// });
+//
+// server.on('request', app);
+// server.listen(8080, function () {
+//   console.log('Listening on http://localhost:8080');
+// });
 
 // query torrents for progress
 // var torrents_callback = ffi.Callback('void', ['string', 'float'], (name, progress) => {
@@ -86,42 +121,12 @@ server.listen(8080, function () {
 //   sqltorrent.query_torrents(ses, torrents_callback);
 // }, 3000);
 
-// we don't care about the `sqlite **`, but rather the `sqlite *` that it's
-// pointing to, so we must deref()
-db = db.deref()
-
-var rowCount = 0
-var callback2 = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
-  var obj = {}
-
-  for (var i = 0; i < cols; i++) {
-    var colName = colv.deref()
-    var colData = argv.deref()
-    obj[colName] = colData
-  }
-
-  if (ws)
-    ws.send(JSON.stringify(obj))
-
-  rowCount++
-
-  return 0
-})
 
 
-function onMessage(query) {
-  var b = new Buffer('test')
-  if(ws)
-    ws.send('exec: ' + query)
-  SQLite3.sqlite3_exec.async(db, query, callback2, b, null, function (err, ret) {
-    if (err) throw err
-    if (ret !== 0 && ws) ws.send('error ' + ret)
-    // console.log('Closing...')
-    SQLite3.sqlite3_close(db)
-    // fs.unlinkSync(dbName)
-    // fin = true
-  })
-}
+// function onMessage(query) {
+//   if(ws)
+//     ws.send('exec: ' + query)
+// }
 
 // SQLite3.sqlite3_close(db)
 // process.on('SIGINT', () => {

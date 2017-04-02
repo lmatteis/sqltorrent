@@ -155,6 +155,13 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 	    for (alert const* a : alerts) {
 	      if (alert_cast<read_piece_alert>(a)) {
 					read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
+  				std::cout <<
+						"piece: " << pa->piece <<
+						" - idx: " << piece_idx <<
+						" - piece_offset: " << piece_offset <<
+						" - piece_size: " << piece_size <<
+						" - residue: " << residue << 
+						std::endl;
 					if (pa->piece == piece_idx) {
 						assert(piece_offset < pa->size);
 						assert(pa->size == piece_size);
