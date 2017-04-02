@@ -32,7 +32,7 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'query_torrents': [ 'void', [ 'pointer', 'pointer'] ],
 });
 
-var torrent = 'magnet:?xt=urn:btih:5abb0feb5b90cfbc325b015d6199b530bcc26f7c';
+var torrent = 'magnet:?xt=urn:btih:624DE1AE0C71661D91C489F83E60BE9DDC18BC1F';
 
 var ctx = sqltorrent.new_context();
 sqltorrent.sqltorrent_init(ctx, 0);
@@ -58,8 +58,9 @@ var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) =
       obj[colName] = colData
     }
 
-    if (ws)
-      ws.send(JSON.stringify(obj))
+    console.log(obj)
+    // if (ws)
+    //   ws.send(JSON.stringify(obj))
 
     rowCount++
 
@@ -67,7 +68,7 @@ var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) =
   })
 
   var b = new Buffer('test')
-  SQLite3.sqlite3_exec.async(db, 'SELECT * FROM foo;', callback2, b, null, function (err, ret) {
+  SQLite3.sqlite3_exec.async(db, 'SELECT * FROM customers;', callback2, b, null, function (err, ret) {
     if (err) throw err
     if (ret !== 0) return console.log('error:', SQLite3.sqlite3_errmsg(db))
     console.log('ok', ret)
