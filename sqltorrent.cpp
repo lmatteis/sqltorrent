@@ -363,17 +363,17 @@ extern "C" {
 				callback(a->message().c_str());
 	      // std::cout << a->message() << std::endl;
 	      // if we receive the finished alert or an error, we're done
-	      if (alert_cast<torrent_finished_alert>(a)) {
-	        goto done;
-	      }
-	      if (alert_cast<torrent_error_alert>(a)) {
-	        goto done;
-	      }
+	      // if (alert_cast<torrent_finished_alert>(a)) {
+	      //   goto done;
+	      // }
+	      // if (alert_cast<torrent_error_alert>(a)) {
+	      //   goto done;
+	      // }
 	    }
-	    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	  }
-	  done:
-		callback("done, shutting down");
+	  // done:
+		// callback("done, shutting down");
 	  // std::cout << "done, shutting down" << std::endl;
 	}
 

@@ -40,8 +40,7 @@ var ses = sqltorrent.get_session(ctx);
 var db = ref.alloc(sqlite3PtrPtr)
 
 // open the database object
-var open = SQLite3.sqlite3_open_v2(torrent, db, 1, 'torrent')
-console.log('open', open)
+var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', () => {})
 
 var callback = ffi.Callback('void', ['string'], msg => console.log('FUCK', msg));
 sqltorrent.alert_loop.async(ses, callback, () => {});
