@@ -376,10 +376,11 @@ extern "C" {
 	  // std::cout << "done, shutting down" << std::endl;
 	}
 
-	EXPORT void query_torrents(session *ses, void (*callback)(const char *data)) {
+	EXPORT void query_torrents(session *ses, void (*callback)(const char *data, float progress)) {
 		std::vector<torrent_handle> v = ses->get_torrents();
 		for(torrent_handle th: v) {
-			callback(th.name().c_str());
+			torrent_status ts = th.status();
+			callback(th.name().c_str(), ts.progress);
 		}
 	}
 

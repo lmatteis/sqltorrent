@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: Tahoma, Geneva, sans-serif;
+      }
+      div {
+        display: inline;
+      }
+    </style>
+    <script>
+      function update(data) {
+        document.getElementById('text').innerHTML = data.msg;
+      }
+      var host = window.document.location.host.replace(/:.*/, '');
+      var ws = new WebSocket('ws://' + host + ':8080');
+      ws.onmessage = function (event) {
+        update(JSON.parse(event.data));
+      };
+    </script>
+  </head>
+  <body>
+    <textarea id="text" style="width: 500px; height: 500px;"></textarea>
+  </body>
+</html>

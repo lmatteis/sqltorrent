@@ -43,19 +43,45 @@ var db = ref.alloc(sqlite3PtrPtr)
 // open the database object
 var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', () => {})
 
+
+var WebSocketServer = require('ws').Server;
+var express = require('express');
+var path = require('path');
+var app = express();
+var server = require('http').createServer();
+
+app.use(express.static(path.join(__dirname, '/public')));
+
+var wss = new WebSocketServer({server: server});
+var ws = null
+wss.on('connection', function (_ws) {
+  ws = _ws;
+  console.log('new connection');
+  ws.on('close', function () {
+    console.log('connection close');
+  });
+});
+
 var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
   // if (type == 'read_piece_alert' || type == 'piece_finished_alert')
-    // console.log(msg, type)
+  // if (ws)
+  //   ws.send(JSON.stringify({ msg, type }), () => {})
 });
 sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 
+server.on('request', app);
+server.listen(8080, function () {
+  console.log('Listening on http://localhost:8080');
+});
+
 // query torrents for progress
-var torrents_callback = ffi.Callback('void', ['string'], (d) => {
-    console.log(d)
+var torrents_callback = ffi.Callback('void', ['string', 'float'], (name, progress) => {
+  if (ws)
+    ws.send(JSON.stringify({ msg: name + ' - ' + progress }), () => {})
 });
 setInterval(() => {
   sqltorrent.query_torrents(ses, torrents_callback);
-},1000);
+}, 3000);
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
 // pointing to, so we must deref()
@@ -76,28 +102,24 @@ setInterval(() => {
 //
 //   return 0
 // })
-
-// function loop() {
 //
-//   // var b = new Buffer('test')
-//   // SQLite3.sqlite3_exec.async(db, 'SELECT * FROM '+Math.random()+';', callback, b, null, function (err, ret) {
-//   //   if (err) throw err
-//   //   if (ret !== 0) throw ret
-//   //   console.log('Total Rows: %j', rowCount)
-//   //   console.log('Changes: %j', SQLite3.sqlite3_changes(db))
-//   //   // console.log('Closing...')
-//   //   // SQLite3.sqlite3_close(db)
-//   //   // fs.unlinkSync(dbName)
-//   //   // fin = true
-//   // })
-// }
-// loop()
-// setInterval(loop, 5000)
-
-process.on('uncaughtException', function (err) {
-  console.error(err);
-  console.log("Node NOT Exiting...");
-});
+//
+// var b = new Buffer('test')
+// SQLite3.sqlite3_exec.async(db, 'SELECT * FROM '+Math.random()+';', callback, b, null, function (err, ret) {
+//   if (err) throw err
+//   if (ret !== 0) throw ret
+//   console.log('Total Rows: %j', rowCount)
+//   console.log('Changes: %j', SQLite3.sqlite3_changes(db))
+//   // console.log('Closing...')
+//   // SQLite3.sqlite3_close(db)
+//   // fs.unlinkSync(dbName)
+//   // fin = true
+// })
+//
+// process.on('uncaughtException', function (err) {
+//   console.error(err);
+//   console.log("Node NOT Exiting...");
+// });
 
 
 // var db = sqltorrent.new_db();
