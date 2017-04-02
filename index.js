@@ -29,7 +29,7 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
 });
 
 
-var torrent = 'magnet:?xt=urn:btih:3479bdac55e8bb1a427385400a963265970e209c';
+var torrent = 'magnet:?xt=urn:btih:c011886bdb195a4a0a84f64f64fd6a397a7554f5';
 
 sqltorrent.sqltorrent_init(0);
 
@@ -37,38 +37,41 @@ sqltorrent.sqltorrent_init(0);
 var db = ref.alloc(sqlite3PtrPtr)
 
 // open the database object
-SQLite3.sqlite3_open_v2(torrent, db, 1, 'torrent')
+var open = SQLite3.sqlite3_open_v2(torrent, db, 1, 'torrent')
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
-// pointing to, so we must deref()
-db = db.deref()
-
-var rowCount = 0
-var callback = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
-  var obj = {}
-
-  for (var i = 0; i < cols; i++) {
-    var colName = colv.deref()
-    var colData = argv.deref()
-    obj[colName] = colData
-  }
-
-  console.log('Row: %j', obj)
-  rowCount++
-
-  return 0
-})
-
-var b = new Buffer('test')
-SQLite3.sqlite3_exec.async(db, 'SELECT * FROM foo;', callback, b, null, function (err, ret) {
-  if (err) throw err
-  console.log('Total Rows: %j', rowCount)
-  console.log('Changes: %j', SQLite3.sqlite3_changes(db))
-  console.log('Closing...')
-  SQLite3.sqlite3_close(db)
-  fs.unlinkSync(dbName)
-  fin = true
-})
+// // pointing to, so we must deref()
+// db = db.deref()
+//
+// var rowCount = 0
+// var callback = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
+//   var obj = {}
+//
+//   for (var i = 0; i < cols; i++) {
+//     var colName = colv.deref()
+//     var colData = argv.deref()
+//     obj[colName] = colData
+//   }
+//
+//   console.log('Row: %j', obj)
+//   rowCount++
+//
+//   return 0
+// })
+//
+// var b = new Buffer('test')
+//
+// setInterval(() => {
+//   SQLite3.sqlite3_exec.async(db, 'SELECT * FROM '+Math.random()+';', callback, b, null, function (err, ret) {
+//     if (err) throw err
+//     console.log('Total Rows: %j', rowCount)
+//     console.log('Changes: %j', SQLite3.sqlite3_changes(db))
+//     // console.log('Closing...')
+//     // SQLite3.sqlite3_close(db)
+//     // fs.unlinkSync(dbName)
+//     fin = true
+//   })
+// }, 5000)
 
 
 // var db = sqltorrent.new_db();

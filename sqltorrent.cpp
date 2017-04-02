@@ -55,6 +55,7 @@ struct torrent_vfs_file
 
 int vfs_close(sqlite3_file* file)
 {
+  std::cout << "CLOSE" << std::endl;
 	torrent_vfs_file* f = (torrent_vfs_file*)file;
 	f->session->remove_torrent(f->torrent);
 	return SQLITE_OK;
@@ -62,13 +63,13 @@ int vfs_close(sqlite3_file* file)
 
 int vfs_write(sqlite3_file* file, const void* buffer, int iAmt, sqlite3_int64 iOfst)
 {
-	assert(false);
+  std::cout << "WRITE" << std::endl;
 	return SQLITE_OK;
 }
 
 int vfs_truncate(sqlite3_file* file, sqlite3_int64 size)
 {
-	assert(false);
+  std::cout << "TRUNCATE" << std::endl;
 	return SQLITE_ERROR;
 }
 
@@ -80,6 +81,7 @@ int vfs_sync(sqlite3_file*, int flags)
 int vfs_file_size(sqlite3_file* file, sqlite3_int64 *pSize)
 {
 	torrent_vfs_file* f = (torrent_vfs_file*)file;
+  std::cout << "FILE SIZE: " << f->torrent.torrent_file()->total_size() << std::endl;
 	*pSize = f->torrent.torrent_file()->total_size();
 	return SQLITE_OK;
 }
@@ -107,6 +109,7 @@ int vfs_file_control(sqlite3_file*, int op, void *pArg)
 int vfs_sector_size(sqlite3_file* file)
 {
 	torrent_vfs_file* f = (torrent_vfs_file*)file;
+  std::cout << "SECTOR SIZE: " << f->torrent.torrent_file()->piece_length() << std::endl;
 	return f->torrent.torrent_file()->piece_length();
 }
 
@@ -131,6 +134,20 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 	{
 		f->torrent.set_piece_deadline(piece_idx, 0, torrent_handle::alert_when_available);
 
+		// for (;;) {
+	  //   std::vector<alert*> alerts;
+	  //   f->session->pop_alerts(&alerts);
+		//
+	  //   for (alert const* a : alerts) {
+	  //   	std::cout << a->type() << "--" << a->message() << std::endl;
+		//
+	  //     if (alert_cast<read_piece_alert>(a)) {
+	  //       goto done;
+	  //     }
+	  //   }
+	  //   std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	  // }
+
 		for (;;)
 		{
 			alert const* a = f->session->wait_for_alert(seconds(10));
@@ -143,12 +160,12 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 			}
 
 			read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
+    	std::cout << piece_idx << " - PIECE: " << pa->piece << std::endl;
 			if (pa->piece != piece_idx)
 			{
 				f->session->pop_alert();
 				continue;
 			}
-
 
 			assert(piece_offset < pa->size);
 			assert(pa->size == piece_size);
@@ -196,31 +213,24 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 	f->base.pMethods = &torrent_vfs_io_methods;
 	f->session = &ctx->session;
 
-	// ctx->session.set_alert_mask(alert::status_notification);
-
-	// {
-	// 	session_settings s = ctx->session.settings();
-	// 	s.enable_incoming_utp = false;
-	// 	s.enable_outgoing_utp = false;
-	// 	s.max_out_request_queue = 4;
-	//
-	// 	ctx->session.set_settings(s);
-	// }
-	//
-	// {
-	// 	pe_settings pes = ctx->session.get_pe_settings();
-	// 	pes.in_enc_policy = pes.out_enc_policy = pe_settings::disabled;
-	// 	ctx->session.set_pe_settings(pes);
-	// }
+	// start DHT
+	f->session->add_dht_router(std::make_pair(
+		std::string("router.bittorrent.com"), 6881));
+	f->session->add_dht_router(std::make_pair(
+		std::string("router.utorrent.com"), 6881));
+	f->session->add_dht_router(std::make_pair(
+		std::string("router.bitcomet.com"), 6881));
+	f->session->start_dht();
 
 	std::string torrentName = zName;
 	std::string torrentNameOrUrl = torrentName.substr( torrentName.find_last_of("/") + 1 );
 
 	add_torrent_params p;
+  std::cout << torrentNameOrUrl << std::endl;
 
 	p.url = torrentNameOrUrl;
 	p.save_path = ".";
-// 	error_code ec;
+	error_code ec;
 // #if LIBTORRENT_VERSION_NUM < 10100
 // 	p.ti = new torrent_info(zName, ec);
 // #else
@@ -236,20 +246,20 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 	// I'm sad to say libtorrent has a bug where it incorrectly thinks a torrent is seeding
 	// when it is in the checking_resume_data state. Wait here for the resume data to be checked
 	// to avoid the bug.
-	for (;;)
-	{
-		alert const* a = f->session->wait_for_alert(seconds(10));
-		if (!a) continue;
-    std::cout << a->message() << std::endl;
+	for (;;) {
+    std::vector<alert*> alerts;
+    f->session->pop_alerts(&alerts);
 
-		if (a->type() != torrent_checked_alert::alert_type)
-		{
-			f->session->pop_alert();
-			continue;
-		}
+    for (alert const* a : alerts) {
+    	std::cout << a->type() << "--" << a->message() << std::endl;
 
-		break;
-	}
+      if (alert_cast<metadata_received_alert>(a)) {
+        goto done;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+  done:
 
 	*pOutFlags |= SQLITE_OPEN_READONLY | SQLITE_OPEN_EXCLUSIVE;
 
