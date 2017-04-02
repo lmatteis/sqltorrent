@@ -17,7 +17,7 @@ var SQLite3 = ffi.Library('./libsqlite3.dylib', {
 })
 
 var sqltorrent = ffi.Library('sqltorrent.dylib', {
-  'sqltorrent_init': [ 'int', [ 'int' ] ],
+  'sqltorrent_init': [ 'int', [ 'pointer', 'int' ] ],
   'new_session': [ 'pointer', [ ] ],
   'new_add_torrent_params': [ 'pointer', [] ],
   'set_url': [ 'void', ['pointer', 'CString'] ],
@@ -26,21 +26,28 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'alert_loop': [ 'void', ['pointer', 'pointer'] ],
   'new_db': [ 'pointer', [ ] ],
   'sqltorrent_open': [ 'int', [ 'string', 'pointer', 'string'] ],
+  'get_session': [ 'pointer', [ 'pointer'] ],
+  'new_context': [ 'pointer', [ ] ],
 });
-
 
 var torrent = 'magnet:?xt=urn:btih:c011886bdb195a4a0a84f64f64fd6a397a7554f5';
 
-sqltorrent.sqltorrent_init(0);
+var ctx = sqltorrent.new_context();
+sqltorrent.sqltorrent_init(ctx, 0);
+var ses = sqltorrent.get_session(ctx);
 
 // create a storage area for the db pointer SQLite3 gives us
 var db = ref.alloc(sqlite3PtrPtr)
 
 // open the database object
 var open = SQLite3.sqlite3_open_v2(torrent, db, 1, 'torrent')
+console.log('open', open)
+
+var callback = ffi.Callback('void', ['string'], msg => console.log('FUCK', msg));
+sqltorrent.alert_loop.async(ses, callback, () => {});
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
-// // pointing to, so we must deref()
+// pointing to, so we must deref()
 // db = db.deref()
 //
 // var rowCount = 0
@@ -58,20 +65,28 @@ var open = SQLite3.sqlite3_open_v2(torrent, db, 1, 'torrent')
 //
 //   return 0
 // })
+
+// function loop() {
 //
-// var b = new Buffer('test')
-//
-// setInterval(() => {
-//   SQLite3.sqlite3_exec.async(db, 'SELECT * FROM '+Math.random()+';', callback, b, null, function (err, ret) {
-//     if (err) throw err
-//     console.log('Total Rows: %j', rowCount)
-//     console.log('Changes: %j', SQLite3.sqlite3_changes(db))
-//     // console.log('Closing...')
-//     // SQLite3.sqlite3_close(db)
-//     // fs.unlinkSync(dbName)
-//     fin = true
-//   })
-// }, 5000)
+//   // var b = new Buffer('test')
+//   // SQLite3.sqlite3_exec.async(db, 'SELECT * FROM '+Math.random()+';', callback, b, null, function (err, ret) {
+//   //   if (err) throw err
+//   //   if (ret !== 0) throw ret
+//   //   console.log('Total Rows: %j', rowCount)
+//   //   console.log('Changes: %j', SQLite3.sqlite3_changes(db))
+//   //   // console.log('Closing...')
+//   //   // SQLite3.sqlite3_close(db)
+//   //   // fs.unlinkSync(dbName)
+//   //   // fin = true
+//   // })
+// }
+// loop()
+// setInterval(loop, 5000)
+
+process.on('uncaughtException', function (err) {
+  console.error(err);
+  console.log("Node NOT Exiting...");
+});
 
 
 // var db = sqltorrent.new_db();

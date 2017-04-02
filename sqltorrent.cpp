@@ -160,7 +160,6 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 			}
 
 			read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
-    	std::cout << piece_idx << " - PIECE: " << pa->piece << std::endl;
 			if (pa->piece != piece_idx)
 			{
 				f->session->pop_alert();
@@ -180,6 +179,8 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 		++piece_idx;
 		piece_offset = 0;
 	} while (residue > 0);
+
+  std::cout << "DONE READ: " << residue << std::endl;
 
 	return SQLITE_OK;
 }
@@ -230,13 +231,7 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 
 	p.url = torrentNameOrUrl;
 	p.save_path = ".";
-	error_code ec;
-// #if LIBTORRENT_VERSION_NUM < 10100
-// 	p.ti = new torrent_info(zName, ec);
-// #else
-// 	p.ti = boost::make_shared<torrent_info>(zName, boost::ref(ec), 0);
-// #endif
-// 	assert(!ec);
+
 	try {
 		f->torrent = ctx->session.add_torrent(p);
 	} catch (libtorrent_exception e) {
@@ -251,11 +246,14 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
     f->session->pop_alerts(&alerts);
 
     for (alert const* a : alerts) {
-    	std::cout << a->type() << "--" << a->message() << std::endl;
-
+			// we need to wait for metadata_received_alert because it's a magnet link
+			// and we need the size of the data (sqlite database) before starting a read
       if (alert_cast<metadata_received_alert>(a)) {
         goto done;
       }
+			if (alert_cast<torrent_error_alert>(a)) {
+				return SQLITE_CANTOPEN;
+			}
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
@@ -280,16 +278,19 @@ int torrent_vfs_access(sqlite3_vfs* vfs, const char *zName, int flags, int *pRes
 
 extern "C" {
 
-	EXPORT int sqltorrent_init(int make_default)
+	EXPORT context* new_context() {
+		return new context();
+	}
+
+	EXPORT int sqltorrent_init(context* ctx, int make_default)
 	{
-		static context ctx;
 		static sqlite3_vfs vfs;
-		if (!ctx.base)
+		if (!ctx->base)
 		{
-			ctx.base = sqlite3_vfs_find(nullptr);
-			vfs = *ctx.base;
+			ctx->base = sqlite3_vfs_find(nullptr);
+			vfs = *ctx->base;
 			vfs.zName = "torrent";
-			vfs.pAppData = &ctx;
+			vfs.pAppData = ctx;
 			vfs.szOsFile = sizeof(torrent_vfs_file);
 			vfs.xOpen = torrent_vfs_open;
 			vfs.xAccess = torrent_vfs_access;
@@ -298,6 +299,10 @@ extern "C" {
 		sqlite3_vfs_register(&vfs, make_default);
 
 		return SQLITE_OK;
+	}
+
+	EXPORT session* get_session(context *ctx) {
+		return &ctx->session;
 	}
 
 	EXPORT sqlite3* new_db() {
@@ -371,4 +376,5 @@ extern "C" {
 		callback("done, shutting down");
 	  // std::cout << "done, shutting down" << std::endl;
 	}
+
 }
