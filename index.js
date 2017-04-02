@@ -42,7 +42,7 @@ var db = ref.alloc(sqlite3PtrPtr)
 // open the database object
 var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', () => {})
 
-var callback = ffi.Callback('void', ['string'], msg => console.log('FUCK', msg));
+var callback = ffi.Callback('void', ['string', 'int'], (msg, type) => console.log(msg, type));
 sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's

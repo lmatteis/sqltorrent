@@ -169,34 +169,6 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 	    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 	  }
 
-		// for (;;)
-		// {
-		// 	alert const* a = f->session->wait_for_alert(seconds(10));
-		// 	if (!a) continue;
-		//
-		// 	if (a->type() != read_piece_alert::alert_type)
-		// 	{
-		// 		f->session->pop_alert();
-		// 		continue;
-		// 	}
-		//
-		// 	read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
-		// 	if (pa->piece != piece_idx)
-		// 	{
-		// 		f->session->pop_alert();
-		// 		continue;
-		// 	}
-		//
-		// 	assert(piece_offset < pa->size);
-		// 	assert(pa->size == piece_size);
-		// 	std::memcpy(b, pa->buffer.get() + piece_offset, (std::min<size_t>)(pa->size - piece_offset, residue));
-		// 	b += pa->size - piece_offset;
-		// 	residue -= pa->size - piece_offset;
-		//
-		// 	f->session->pop_alert();
-		// 	break;
-		// }
-
 		done:
 
 		++piece_idx;
@@ -379,7 +351,7 @@ extern "C" {
     return new torrent_handle(th);
   }
 
-	EXPORT void alert_loop(context* ctx, session *ses, void (*callback)(const char *data)) {
+	EXPORT void alert_loop(context* ctx, session *ses, void (*callback)(const char *data, int type)) {
 		for (;;) {
 	    std::vector<alert*> alerts;
 	    ses->pop_alerts(&alerts);
@@ -387,7 +359,7 @@ extern "C" {
 			ctx->unblock(&alerts);
 
 	    for (alert const* a : alerts) {
-				callback(a->message().c_str());
+				callback(a->message().c_str(), a->type());
 	      // std::cout << a->message() << std::endl;
 	      // if we receive the finished alert or an error, we're done
 	      // if (alert_cast<torrent_finished_alert>(a)) {
