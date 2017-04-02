@@ -28,6 +28,7 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'sqltorrent_open': [ 'int', [ 'string', 'pointer', 'string'] ],
   'get_session': [ 'pointer', [ 'pointer'] ],
   'new_context': [ 'pointer', [ ] ],
+  'query_torrents': [ 'void', [ 'pointer', 'pointer'] ],
 });
 
 var torrent = 'magnet:?xt=urn:btih:c011886bdb195a4a0a84f64f64fd6a397a7554f5';
@@ -42,11 +43,19 @@ var db = ref.alloc(sqlite3PtrPtr)
 // open the database object
 var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', () => {})
 
-var callback = ffi.Callback('void', ['string', 'string'], (msg, type) => {
-  if (type == 'read_piece_alert' || type == 'piece_finished_alert')
-    console.log(msg, type)
+var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
+  // if (type == 'read_piece_alert' || type == 'piece_finished_alert')
+    // console.log(msg, type)
 });
 sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
+
+// query torrents for progress
+var torrents_callback = ffi.Callback('void', ['string'], (d) => {
+    console.log(d)
+});
+setInterval(() => {
+  sqltorrent.query_torrents(ses, torrents_callback);
+},1000);
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
 // pointing to, so we must deref()

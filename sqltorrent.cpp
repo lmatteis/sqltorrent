@@ -351,7 +351,7 @@ extern "C" {
     return new torrent_handle(th);
   }
 
-	EXPORT void alert_loop(context* ctx, session *ses, void (*callback)(const char *data, const char *type)) {
+	EXPORT void alert_loop(context* ctx, session *ses, void (*callback)(alert const* a, const char *data, const char *type)) {
 		for (;;) {
 	    std::vector<alert*> alerts;
 	    ses->pop_alerts(&alerts);
@@ -359,7 +359,7 @@ extern "C" {
 			ctx->unblock(&alerts);
 
 	    for (alert const* a : alerts) {
-				callback(a->message().c_str(), a->what());
+				callback(a, a->message().c_str(), a->what());
 	      // std::cout << a->message() << std::endl;
 	      // if we receive the finished alert or an error, we're done
 	      // if (alert_cast<torrent_finished_alert>(a)) {
@@ -374,6 +374,13 @@ extern "C" {
 	  // done:
 		// callback("done, shutting down");
 	  // std::cout << "done, shutting down" << std::endl;
+	}
+
+	EXPORT void query_torrents(session *ses, void (*callback)(const char *data)) {
+		std::vector<torrent_handle> v = ses->get_torrents();
+		for(torrent_handle th: v) {
+			callback(th.name().c_str());
+		}
 	}
 
 }
