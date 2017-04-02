@@ -11,16 +11,24 @@
     </style>
     <script>
       function update(data) {
-        document.getElementById('text').innerHTML = data.msg;
+        document.getElementById('text').value = data + '\n'+ document.getElementById('text').value;
       }
       var host = window.document.location.host.replace(/:.*/, '');
       var ws = new WebSocket('ws://' + host + ':8080');
       ws.onmessage = function (event) {
-        update(JSON.parse(event.data));
+        update(event.data);
       };
+      ws.onopen = () => {
+        document.getElementById('btn').onclick = () => {
+          ws.send(document.getElementById('input').value);
+        }
+      }
     </script>
   </head>
   <body>
+    <textarea id='input'></textarea>
+    <button id='btn'>go</button>
+    <br />
     <textarea id="text" style="width: 500px; height: 500px;"></textarea>
   </body>
 </html>

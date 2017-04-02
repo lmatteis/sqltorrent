@@ -31,7 +31,7 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'query_torrents': [ 'void', [ 'pointer', 'pointer'] ],
 });
 
-var torrent = 'magnet:?xt=urn:btih:c011886bdb195a4a0a84f64f64fd6a397a7554f5';
+var torrent = 'magnet:?xt=urn:btih:5abb0feb5b90cfbc325b015d6199b530bcc26f7c';
 
 var ctx = sqltorrent.new_context();
 sqltorrent.sqltorrent_init(ctx, 0);
@@ -60,12 +60,15 @@ wss.on('connection', function (_ws) {
   ws.on('close', function () {
     console.log('connection close');
   });
+
+  ws.on('message', function incoming(message) {
+    onMessage(message)
+  });
 });
 
 var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
-  // if (type == 'read_piece_alert' || type == 'piece_finished_alert')
-  // if (ws)
-  //   ws.send(JSON.stringify({ msg, type }), () => {})
+  // if (ws && (type == 'read_piece_alert' || type == 'piece_finished_alert'))
+  if (ws) ws.send(msg)
 });
 sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 
@@ -75,46 +78,57 @@ server.listen(8080, function () {
 });
 
 // query torrents for progress
-var torrents_callback = ffi.Callback('void', ['string', 'float'], (name, progress) => {
-  if (ws)
-    ws.send(JSON.stringify({ msg: name + ' - ' + progress }), () => {})
-});
-setInterval(() => {
-  sqltorrent.query_torrents(ses, torrents_callback);
-}, 3000);
+// var torrents_callback = ffi.Callback('void', ['string', 'float'], (name, progress) => {
+//   if (ws)
+//     ws.send(JSON.stringify({ msg: name + ' - ' + progress }), () => {})
+// });
+// setInterval(() => {
+//   sqltorrent.query_torrents(ses, torrents_callback);
+// }, 3000);
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
 // pointing to, so we must deref()
-// db = db.deref()
-//
-// var rowCount = 0
-// var callback = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
-//   var obj = {}
-//
-//   for (var i = 0; i < cols; i++) {
-//     var colName = colv.deref()
-//     var colData = argv.deref()
-//     obj[colName] = colData
-//   }
-//
-//   console.log('Row: %j', obj)
-//   rowCount++
-//
-//   return 0
-// })
-//
-//
-// var b = new Buffer('test')
-// SQLite3.sqlite3_exec.async(db, 'SELECT * FROM '+Math.random()+';', callback, b, null, function (err, ret) {
-//   if (err) throw err
-//   if (ret !== 0) throw ret
-//   console.log('Total Rows: %j', rowCount)
-//   console.log('Changes: %j', SQLite3.sqlite3_changes(db))
-//   // console.log('Closing...')
-//   // SQLite3.sqlite3_close(db)
-//   // fs.unlinkSync(dbName)
-//   // fin = true
-// })
+db = db.deref()
+
+var rowCount = 0
+var callback2 = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
+  var obj = {}
+
+  for (var i = 0; i < cols; i++) {
+    var colName = colv.deref()
+    var colData = argv.deref()
+    obj[colName] = colData
+  }
+
+  if (ws)
+    ws.send(JSON.stringify(obj))
+
+  rowCount++
+
+  return 0
+})
+
+
+function onMessage(query) {
+  var b = new Buffer('test')
+  if(ws)
+    ws.send('exec: ' + query)
+  SQLite3.sqlite3_exec.async(db, query, callback2, b, null, function (err, ret) {
+    if (err) throw err
+    if (ret !== 0 && ws) ws.send('error ' + ret)
+    // console.log('Closing...')
+    SQLite3.sqlite3_close(db)
+    // fs.unlinkSync(dbName)
+    // fin = true
+  })
+}
+
+// SQLite3.sqlite3_close(db)
+// process.on('SIGINT', () => {
+//   console.log('faaa')
+//   SQLite3.sqlite3_close(db)
+//   process.exit();
+// });
 //
 // process.on('uncaughtException', function (err) {
 //   console.error(err);
