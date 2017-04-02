@@ -44,6 +44,19 @@ struct context
 
 	sqlite3_vfs* base;
 	libtorrent::session session;
+	std::vector<alert*> tmp_alerts;
+	bool block = true;
+	void unblock(std::vector<alert*>* alerts) {
+		this->tmp_alerts = *alerts;
+		this->block = false;
+	}
+	void block_for_alert(std::vector<alert*>* alerts) {
+		this->block = true;
+		*alerts = tmp_alerts;
+		while (this->block) {
+		}
+		*alerts = tmp_alerts;
+	}
 };
 
 struct torrent_vfs_file
@@ -51,6 +64,7 @@ struct torrent_vfs_file
 	sqlite3_file base;
 	libtorrent::session* session;
 	libtorrent::torrent_handle torrent;
+	context* context;
 };
 
 int vfs_close(sqlite3_file* file)
@@ -134,47 +148,56 @@ int vfs_read(sqlite3_file* file, void* buffer, int const iAmt, sqlite3_int64 con
 	{
 		f->torrent.set_piece_deadline(piece_idx, 0, torrent_handle::alert_when_available);
 
-		// for (;;) {
-	  //   std::vector<alert*> alerts;
-	  //   f->session->pop_alerts(&alerts);
+		for (;;) {
+	    std::vector<alert*> alerts;
+			f->context->block_for_alert(&alerts);
+
+	    for (alert const* a : alerts) {
+	      if (alert_cast<read_piece_alert>(a)) {
+					read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
+					if (pa->piece == piece_idx) {
+						assert(piece_offset < pa->size);
+						assert(pa->size == piece_size);
+						std::memcpy(b, pa->buffer.get() + piece_offset, (std::min<size_t>)(pa->size - piece_offset, residue));
+						b += pa->size - piece_offset;
+						residue -= pa->size - piece_offset;
+
+						goto done;
+					}
+	      }
+	    }
+	    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	  }
+
+		// for (;;)
+		// {
+		// 	alert const* a = f->session->wait_for_alert(seconds(10));
+		// 	if (!a) continue;
 		//
-	  //   for (alert const* a : alerts) {
-	  //   	std::cout << a->type() << "--" << a->message() << std::endl;
+		// 	if (a->type() != read_piece_alert::alert_type)
+		// 	{
+		// 		f->session->pop_alert();
+		// 		continue;
+		// 	}
 		//
-	  //     if (alert_cast<read_piece_alert>(a)) {
-	  //       goto done;
-	  //     }
-	  //   }
-	  //   std::this_thread::sleep_for(std::chrono::milliseconds(200));
-	  // }
+		// 	read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
+		// 	if (pa->piece != piece_idx)
+		// 	{
+		// 		f->session->pop_alert();
+		// 		continue;
+		// 	}
+		//
+		// 	assert(piece_offset < pa->size);
+		// 	assert(pa->size == piece_size);
+		// 	std::memcpy(b, pa->buffer.get() + piece_offset, (std::min<size_t>)(pa->size - piece_offset, residue));
+		// 	b += pa->size - piece_offset;
+		// 	residue -= pa->size - piece_offset;
+		//
+		// 	f->session->pop_alert();
+		// 	break;
+		// }
 
-		for (;;)
-		{
-			alert const* a = f->session->wait_for_alert(seconds(10));
-			if (!a) continue;
-
-			if (a->type() != read_piece_alert::alert_type)
-			{
-				f->session->pop_alert();
-				continue;
-			}
-
-			read_piece_alert const* pa = static_cast<read_piece_alert const*>(a);
-			if (pa->piece != piece_idx)
-			{
-				f->session->pop_alert();
-				continue;
-			}
-
-			assert(piece_offset < pa->size);
-			assert(pa->size == piece_size);
-			std::memcpy(b, pa->buffer.get() + piece_offset, (std::min<size_t>)(pa->size - piece_offset, residue));
-			b += pa->size - piece_offset;
-			residue -= pa->size - piece_offset;
-
-			f->session->pop_alert();
-			break;
-		}
+		done:
 
 		++piece_idx;
 		piece_offset = 0;
@@ -212,6 +235,7 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 
 	std::memset(f, 0, sizeof(torrent_vfs_file));
 	f->base.pMethods = &torrent_vfs_io_methods;
+	f->context = ctx;
 	f->session = &ctx->session;
 
 	// start DHT
@@ -243,7 +267,8 @@ int torrent_vfs_open(sqlite3_vfs* vfs, const char *zName, sqlite3_file* file, in
 	// to avoid the bug.
 	for (;;) {
     std::vector<alert*> alerts;
-    f->session->pop_alerts(&alerts);
+		f->context->block_for_alert(&alerts);
+    // f->session->pop_alerts(&alerts);
 
     for (alert const* a : alerts) {
 			// we need to wait for metadata_received_alert because it's a magnet link
@@ -354,10 +379,12 @@ extern "C" {
     return new torrent_handle(th);
   }
 
-	EXPORT void alert_loop(session *ses, void (*callback)(const char *data)) {
+	EXPORT void alert_loop(context* ctx, session *ses, void (*callback)(const char *data)) {
 		for (;;) {
 	    std::vector<alert*> alerts;
 	    ses->pop_alerts(&alerts);
+
+			ctx->unblock(&alerts);
 
 	    for (alert const* a : alerts) {
 				callback(a->message().c_str());

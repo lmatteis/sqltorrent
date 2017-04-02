@@ -23,7 +23,7 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'set_url': [ 'void', ['pointer', 'CString'] ],
   'set_save_path': [ 'void', ['pointer', 'CString'] ],
   'add_torrent': [ 'pointer', ['pointer', 'pointer'] ],
-  'alert_loop': [ 'void', ['pointer', 'pointer'] ],
+  'alert_loop': [ 'void', [ 'pointer', 'pointer', 'pointer'] ],
   'new_db': [ 'pointer', [ ] ],
   'sqltorrent_open': [ 'int', [ 'string', 'pointer', 'string'] ],
   'get_session': [ 'pointer', [ 'pointer'] ],
@@ -43,7 +43,7 @@ var db = ref.alloc(sqlite3PtrPtr)
 var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', () => {})
 
 var callback = ffi.Callback('void', ['string'], msg => console.log('FUCK', msg));
-sqltorrent.alert_loop.async(ses, callback, () => {});
+sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 
 // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
 // pointing to, so we must deref()
