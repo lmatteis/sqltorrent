@@ -32,7 +32,7 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'query_torrents': [ 'void', [ 'pointer', 'pointer'] ],
 });
 
-var torrent = 'magnet:?xt=urn:btih:735092313079AA60F826CDC20438490AF06F24EC';
+var torrent = 'magnet:?xt=urn:btih:735092313079AA60F826CDC20438490AF06F24EC&dn=kat.db&tr=udp%3a%2f%2fpublic.popcorn-tracker.org%3a6969%2fannounce';
 
 var ctx = sqltorrent.new_context();
 sqltorrent.sqltorrent_init(ctx, 0);
@@ -44,6 +44,7 @@ var db = ref.alloc(sqlite3PtrPtr)
 // open the database object
 var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) => {
   console.log('DB OPENED', ret)
+  console.time('torrent')
   // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
   // pointing to, so we must deref()
   db = db.deref()
@@ -68,10 +69,12 @@ var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) =
   })
 
   var b = new Buffer('test')
-  SQLite3.sqlite3_exec.async(db, 'select name from torrents limit 10;', callback2, b, null, function (err, ret) {
+  SQLite3.sqlite3_exec.async(db, 'select name from torrents WHERE name LIKE "the%" limit 10;', callback2, b, null, function (err, ret) {
     if (err) throw err
     if (ret !== 0) return console.log('error:', SQLite3.sqlite3_errmsg(db))
+
     console.log('ok', ret)
+    console.timeEnd('torrent')
     // console.log('Closing...')
     // SQLite3.sqlite3_close(db)
     // fs.unlinkSync(dbName)
@@ -83,6 +86,7 @@ var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) =
 var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
   // if (ws && (type == 'read_piece_alert' || type == 'piece_finished_alert'))
   // if (ws) ws.send(msg)
+  // console.log(msg)
 });
 sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 
@@ -117,6 +121,7 @@ sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
 var torrents_callback = ffi.Callback('void', ['string', 'float'], (name, progress) => {
   console.log(name + ' - ' + progress);
 });
+sqltorrent.query_torrents(ses, torrents_callback);
 setInterval(() => {
   sqltorrent.query_torrents(ses, torrents_callback);
 }, 5000);
