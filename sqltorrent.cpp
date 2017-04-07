@@ -25,6 +25,7 @@ limitations under the License.
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <mutex>
 #include <memory>
 #include <cassert>
 #include <libtorrent/session.hpp>
@@ -58,17 +59,15 @@ namespace {
 		char* save_path;
 		char* listen_interfaces;
 
+		std::mutex mtx;
 		std::vector<alert*> tmp_alerts;
-		bool block = true;
+		bool ready = false;
 		void unblock(std::vector<alert*>* alerts) {
-			this->tmp_alerts = *alerts;
-			this->block = false;
+			tmp_alerts = *alerts;
+			mtx.unlock();
 		}
 		void block_for_alert(std::vector<alert*>* alerts) {
-			this->block = true;
-			*alerts = tmp_alerts;
-			while (this->block) {
-			}
+			mtx.lock();
 			*alerts = tmp_alerts;
 		}
 	};
@@ -385,22 +384,27 @@ extern "C" {
 
 	EXPORT void alert_loop(context* ctx, void (*callback)(alert const* a, const char *data, const char *type)) {
 		for (;;) {
+			alert const* a = ctx->session.wait_for_alert(seconds(10));
+			if (!a) continue;
+
 			std::vector<alert*> alerts;
 			ctx->session.pop_alerts(&alerts);
 
-			ctx->unblock(&alerts);
-
-			for (alert const* a : alerts) {
-				callback(a, a->message().c_str(), a->what());
-				// std::cout << a->message() << std::endl;
-				// if we receive the finished alert or an error, we're done
-				// if (alert_cast<torrent_finished_alert>(a)) {
-				//   goto done;
-				// }
-				// if (alert_cast<torrent_error_alert>(a)) {
-				//   goto done;
-				// }
+			if (alerts.size() > 0) {
+				ctx->unblock(&alerts);
+				for (alert const* a : alerts) {
+					callback(a, a->message().c_str(), a->what());
+					// std::cout << a->message() << std::endl;
+					// if we receive the finished alert or an error, we're done
+					// if (alert_cast<torrent_finished_alert>(a)) {
+					//   goto done;
+					// }
+					// if (alert_cast<torrent_error_alert>(a)) {
+					//   goto done;
+					// }
+				}
 			}
+
 			// std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
 			// ask the session to post a state_update_alert, to update our
