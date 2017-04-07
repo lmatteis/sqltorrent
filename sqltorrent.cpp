@@ -401,7 +401,7 @@ extern "C" {
 				//   goto done;
 				// }
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+			// std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
 			// ask the session to post a state_update_alert, to update our
 	    // state output for the torrent
