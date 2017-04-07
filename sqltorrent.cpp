@@ -44,6 +44,11 @@ namespace {
 			settings_pack sp;
 			sp.set_bool(settings_pack::allow_multiple_connections_per_ip, true);
 			// std::cout << "applying settings: " << li << std::endl;
+			sp.set_int(settings_pack::alert_mask
+        , alert::error_notification
+        | alert::storage_notification
+        | alert::status_notification);
+
 			session.apply_settings(sp);
 		}
 
@@ -227,7 +232,7 @@ namespace {
 		// f->session->start_dht();
 
 		std::string torrentName = zName;
-		std::cout << torrentName << "-" << ctx->save_path << std::endl;
+		std::cout << "OPEN: " << torrentName << "-" << ctx->save_path << std::endl;
 		// std::string torrentNameOrUrl = torrentName.substr( torrentName.find_last_of("/") + 1 );
 
 		add_torrent_params p;
@@ -253,7 +258,9 @@ namespace {
 			for (alert const* a : alerts) {
 				// we need to wait for metadata_received_alert because it's a magnet link
 				// and we need the size of the data (sqlite database) before starting a read
-				if (alert_cast<metadata_received_alert>(a)) {
+				//if (alert_cast<metadata_received_alert>(a)) {
+				// torrent_checked_alert is only used when torrent files are used
+				if (alert_cast<torrent_checked_alert>(a)) {
 					goto done;
 				}
 				if (alert_cast<torrent_error_alert>(a)) {
@@ -358,6 +365,24 @@ extern "C" {
 		return new torrent_handle(th);
 	}
 
+	EXPORT char* state_update_alert_msg(alert const* a) {
+		state_update_alert const* st = static_cast<state_update_alert const*>(a);
+		std::vector<torrent_status> statuses = st->status;
+
+		for (torrent_status s : statuses) {
+		  switch(s.state) {
+		    case torrent_status::checking_files: return "checking";
+		    case torrent_status::downloading_metadata: return "dl metadata";
+		    case torrent_status::downloading: return "downloading";
+		    case torrent_status::finished: return "finished";
+		    case torrent_status::seeding: return "seeding";
+		    case torrent_status::allocating: return "allocating";
+		    case torrent_status::checking_resume_data: return "checking resume";
+		    default: return "<>";
+		  }
+		}
+	}
+
 	EXPORT void alert_loop(context* ctx, void (*callback)(alert const* a, const char *data, const char *type)) {
 		for (;;) {
 			std::vector<alert*> alerts;
@@ -380,7 +405,7 @@ extern "C" {
 
 			// ask the session to post a state_update_alert, to update our
 	    // state output for the torrent
-	    ctx->session.post_torrent_updates();
+	    // ctx->session.post_torrent_updates();
 		}
 		// done:
 		// callback("done, shutting down");
@@ -395,4 +420,8 @@ extern "C" {
 		}
 	}
 
+	EXPORT int alert_error_code(alert const* a) {
+		add_torrent_alert const* ata = static_cast<add_torrent_alert const*>(a);
+		return ata->error.value();
+	}
 }

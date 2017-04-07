@@ -30,6 +30,8 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'get_session': [ 'pointer', [ 'pointer'] ],
   'new_context': [ 'pointer', [ 'string'] ],
   'query_torrents': [ 'void', [ 'pointer', 'pointer'] ],
+  'alert_error_code': ['int', ['pointer']],
+  'state_update_alert_msg': ['string', ['pointer']],
 });
 
 var torrent = 'kat.torrent';
@@ -48,23 +50,58 @@ var open = SQLite3.sqlite3_open_v2.async(torrent, db1, 1, 'torrent1', (err, ret)
 });
 var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
   console.log('TORRENT1', msg, type)
-  if (type === 'state_update_alert')
+  // if (type === 'add_torrent_alert') {
+  //   console.log(sqltorrent.alert_error_code(alert));
+  // }
+  // if (type === 'state_update_alert') {
+  //   console.log('TORRENT1', sqltorrent.state_update_alert_msg(alert));
+  // }
 });
 sqltorrent.alert_loop.async(ctx1, callback, () => {});
 
 
 /// torrent 2
-// var save_path2 = 'torrent2/.';
-// var ctx2 = sqltorrent.new_context(save_path2);
-// sqltorrent.sqltorrent_init(ctx2, 'torrent2', 0); // gonna register a vfs called torrent2
-//
-// // create a storage area for the db pointer SQLite3 gives us
-// var db2 = ref.alloc(sqlite3PtrPtr)
-// var open = SQLite3.sqlite3_open_v2.async(torrent, db2, 1, 'torrent2', (err, ret) => {
-//   console.log('DB OPENED TORRENT2', ret)
-//   if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db2))
-// });
-// var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
-//   console.log('TORRENT2', msg)
-// });
-// sqltorrent.alert_loop.async(ctx2, callback, () => {});
+var save_path2 = 'torrent2/.';
+var ctx2 = sqltorrent.new_context(save_path2);
+sqltorrent.sqltorrent_init(ctx2, 'torrent2', 0); // gonna register a vfs called torrent2
+
+// create a storage area for the db pointer SQLite3 gives us
+var db2 = ref.alloc(sqlite3PtrPtr)
+var open = SQLite3.sqlite3_open_v2.async(torrent, db2, 1, 'torrent2', (err, ret) => {
+  console.log('DB OPENED TORRENT2', ret)
+  console.time('torrent')
+  if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db2))
+  var _db2 = db2.deref()
+
+  var rowCount = 0
+  var callback2 = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
+    var obj = {}
+
+    for (var i = 0; i < cols; i++) {
+      var colName = colv.deref()
+      var colData = argv.deref()
+      obj[colName] = colData
+    }
+
+    console.log(obj)
+
+    return 0
+  })
+
+  var b = new Buffer('test')
+  SQLite3.sqlite3_exec.async(_db2, 'SELECT name FROM torrents_fts5 WHERE torrents_fts5 MATCH "sex" limit 10;', callback2, b, null, function (err, ret) {
+    if (err) throw err
+    if (ret !== 0) return console.log('error:', SQLite3.sqlite3_errmsg(db))
+
+    console.log('ok, query done', ret)
+    console.timeEnd('torrent')
+    // console.log('Closing...')
+    // SQLite3.sqlite3_close(db)
+    // fs.unlinkSync(dbName)
+    // fin = true
+  })
+});
+var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
+  console.log('TORRENT2', msg)
+});
+sqltorrent.alert_loop.async(ctx2, callback, () => {});
