@@ -69,9 +69,38 @@ sqltorrent.sqltorrent_init(ctx2, 'torrent2', 0); // gonna register a vfs called 
 var db2 = ref.alloc(sqlite3PtrPtr)
 var open = SQLite3.sqlite3_open_v2.async(torrent, db2, 1, 'torrent2', (err, ret) => {
   console.log('DB OPENED TORRENT2', ret)
-  console.time('torrent')
   if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db2))
-  var _db2 = db2.deref()
+
+  var readline = require('readline');
+  var rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+  });
+
+  rl.on('line', function(line){
+      runQuery(db2.deref(), line, () => {})
+  })
+
+  //
+  // runQuery(db2.deref(), 'SELECT name FROM torrents_fts5 WHERE torrents_fts5 MATCH "sex" limit 10;', () => {
+  //
+  //   console.log('ok, query done')
+  //   runQuery(db2.deref(), 'SELECT name FROM torrents_fts5 WHERE torrents_fts5 MATCH "sex" limit 10;', () => {
+  //     console.log('ok, second query done')
+  //   })
+  //
+  // })
+
+});
+var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
+  console.log('TORRENT2', msg)
+});
+sqltorrent.alert_loop.async(ctx2, callback, () => {});
+
+
+function runQuery(db, query, callback) {
+  console.time('torrent')
 
   var rowCount = 0
   var callback2 = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
@@ -89,19 +118,16 @@ var open = SQLite3.sqlite3_open_v2.async(torrent, db2, 1, 'torrent2', (err, ret)
   })
 
   var b = new Buffer('test')
-  SQLite3.sqlite3_exec.async(_db2, 'SELECT name FROM torrents_fts5 WHERE torrents_fts5 MATCH "sex" limit 10;', callback2, b, null, function (err, ret) {
+  SQLite3.sqlite3_exec.async(db, query, callback2, b, null, function (err, ret) {
     if (err) throw err
     if (ret !== 0) return console.log('error:', SQLite3.sqlite3_errmsg(db))
 
-    console.log('ok, query done', ret)
+    callback();
     console.timeEnd('torrent')
     // console.log('Closing...')
     // SQLite3.sqlite3_close(db)
     // fs.unlinkSync(dbName)
     // fin = true
   })
-});
-var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
-  console.log('TORRENT2', msg)
-});
-sqltorrent.alert_loop.async(ctx2, callback, () => {});
+
+}

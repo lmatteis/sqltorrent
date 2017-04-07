@@ -181,7 +181,7 @@ namespace {
 						}
 					}
 				}
-				std::this_thread::sleep_for(std::chrono::milliseconds(200));
+				// std::this_thread::sleep_for(std::chrono::milliseconds(200));
 			}
 
 			done:
@@ -267,7 +267,7 @@ namespace {
 					return SQLITE_CANTOPEN;
 				}
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(200));
+			// std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}
 		done:
 
