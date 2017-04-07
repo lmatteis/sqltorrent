@@ -18,144 +18,53 @@ var SQLite3 = ffi.Library('./libsqlite3.dylib', {
 })
 
 var sqltorrent = ffi.Library('sqltorrent.dylib', {
-  'sqltorrent_init': [ 'int', [ 'pointer', 'int' ] ],
+  'sqltorrent_init': [ 'int', [ 'pointer', 'string', 'int' ] ],
   'new_session': [ 'pointer', [ ] ],
   'new_add_torrent_params': [ 'pointer', [] ],
   'set_url': [ 'void', ['pointer', 'CString'] ],
   'set_save_path': [ 'void', ['pointer', 'CString'] ],
   'add_torrent': [ 'pointer', ['pointer', 'pointer'] ],
-  'alert_loop': [ 'void', [ 'pointer', 'pointer', 'pointer'] ],
+  'alert_loop': [ 'void', [ 'pointer', 'pointer'] ],
   'new_db': [ 'pointer', [ ] ],
   'sqltorrent_open': [ 'int', [ 'string', 'pointer', 'string'] ],
   'get_session': [ 'pointer', [ 'pointer'] ],
-  'new_context': [ 'pointer', [ ] ],
+  'new_context': [ 'pointer', [ 'string'] ],
   'query_torrents': [ 'void', [ 'pointer', 'pointer'] ],
 });
 
-var torrent = 'magnet:?xt=urn:btih:9E04233DAF407F7025B00CF8FF122B42E65DB065&dn=kat.db&tr=udp%3a%2f%2fpublic.popcorn-tracker.org%3a6969%2fannounce';
+var torrent = 'kat.torrent';
 
-var ctx = sqltorrent.new_context();
-sqltorrent.sqltorrent_init(ctx, 0);
-var ses = sqltorrent.get_session(ctx);
+// start two separate sessions
+
+var save_path1 = 'torrent1/.';
+var ctx1 = sqltorrent.new_context(save_path1);
+sqltorrent.sqltorrent_init(ctx1, 'torrent1', 0); // gonna register a vfs called torrent1
 
 // create a storage area for the db pointer SQLite3 gives us
-var db = ref.alloc(sqlite3PtrPtr)
-
-// open the database object
-var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) => {
-  console.log('DB OPENED', ret)
-  console.time('torrent')
-  // we don't care about the `sqlite **`, but rather the `sqlite *` that it's
-  // pointing to, so we must deref()
-  db = db.deref()
-
-  var rowCount = 0
-  var callback2 = ffi.Callback('int', ['void *', 'int', stringPtr, stringPtr], function (tmp, cols, argv, colv) {
-    var obj = {}
-
-    for (var i = 0; i < cols; i++) {
-      var colName = colv.deref()
-      var colData = argv.deref()
-      obj[colName] = colData
-    }
-
-    console.log(obj)
-    // if (ws)
-    //   ws.send(JSON.stringify(obj))
-
-    rowCount++
-
-    return 0
-  })
-
-  var b = new Buffer('test')
-  SQLite3.sqlite3_exec.async(db, 'SELECT name FROM torrents_fts5 WHERE torrents_fts5 MATCH "sex" limit 10;', callback2, b, null, function (err, ret) {
-    if (err) throw err
-    if (ret !== 0) return console.log('error:', SQLite3.sqlite3_errmsg(db))
-
-    console.log('ok', ret)
-    console.timeEnd('torrent')
-    // console.log('Closing...')
-    // SQLite3.sqlite3_close(db)
-    // fs.unlinkSync(dbName)
-    // fin = true
-  })
-})
-
-
+var db1 = ref.alloc(sqlite3PtrPtr)
+var open = SQLite3.sqlite3_open_v2.async(torrent, db1, 1, 'torrent1', (err, ret) => {
+  console.log('DB OPENED TORRENT1', ret)
+  if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db1))
+});
 var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
-  // if (ws && (type == 'read_piece_alert' || type == 'piece_finished_alert'))
-  // if (ws) ws.send(msg)
-  // console.log(msg)
+  console.log('TORRENT1', msg, type)
+  if (type === 'state_update_alert')
 });
-sqltorrent.alert_loop.async(ctx, ses, callback, () => {});
+sqltorrent.alert_loop.async(ctx1, callback, () => {});
 
-// var WebSocketServer = require('ws').Server;
-// var express = require('express');
-// var path = require('path');
-// var app = express();
-// var server = require('http').createServer();
+
+/// torrent 2
+// var save_path2 = 'torrent2/.';
+// var ctx2 = sqltorrent.new_context(save_path2);
+// sqltorrent.sqltorrent_init(ctx2, 'torrent2', 0); // gonna register a vfs called torrent2
 //
-// app.use(express.static(path.join(__dirname, '/public')));
-//
-// var wss = new WebSocketServer({server: server});
-// var ws = null
-// wss.on('connection', function (_ws) {
-//   ws = _ws;
-//   console.log('new connection');
-//   ws.on('close', function () {
-//     console.log('connection close');
-//   });
-//
-//   ws.on('message', function incoming(message) {
-//     onMessage(message)
-//   });
+// // create a storage area for the db pointer SQLite3 gives us
+// var db2 = ref.alloc(sqlite3PtrPtr)
+// var open = SQLite3.sqlite3_open_v2.async(torrent, db2, 1, 'torrent2', (err, ret) => {
+//   console.log('DB OPENED TORRENT2', ret)
+//   if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db2))
 // });
-//
-// server.on('request', app);
-// server.listen(8080, function () {
-//   console.log('Listening on http://localhost:8080');
+// var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
+//   console.log('TORRENT2', msg)
 // });
-
-// query torrents for progress
-var torrents_callback = ffi.Callback('void', ['string', 'float'], (name, progress) => {
-  console.log(name + ' - ' + progress);
-});
-sqltorrent.query_torrents(ses, torrents_callback);
-setInterval(() => {
-  sqltorrent.query_torrents(ses, torrents_callback);
-}, 5000);
-
-
-
-// function onMessage(query) {
-//   if(ws)
-//     ws.send('exec: ' + query)
-// }
-
-// SQLite3.sqlite3_close(db)
-// process.on('SIGINT', () => {
-//   console.log('faaa')
-//   SQLite3.sqlite3_close(db)
-//   process.exit();
-// });
-//
-// process.on('uncaughtException', function (err) {
-//   console.error(err);
-//   console.log("Node NOT Exiting...");
-// });
-
-
-// var db = sqltorrent.new_db();
-// var open = sqltorrent.sqltorrent_open(torrent, db, 'torrent')
-// SQLite3.sqlite3_close(db)
-
-// var session = sqltorrent.new_session();
-// var atp = sqltorrent.new_add_torrent_params();
-// sqltorrent.set_url(atp, torrent);
-// sqltorrent.set_save_path(atp, '.')
-//
-// sqltorrent.add_torrent(session, atp);
-//
-// var callback = ffi.Callback('void', ['string'], msg => console.log(msg));
-// sqltorrent.alert_loop.async(session, callback, () => {});
+// sqltorrent.alert_loop.async(ctx2, callback, () => {});
