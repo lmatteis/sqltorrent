@@ -44,6 +44,8 @@ namespace {
 		{
 			settings_pack sp;
 			sp.set_bool(settings_pack::allow_multiple_connections_per_ip, true);
+			// sp.set_int(settings_pack::local_upload_rate_limit, 1000000);
+			// sp.set_int(settings_pack::local_download_rate_limit, 1000000);
 			// std::cout << "applying settings: " << li << std::endl;
 			sp.set_int(settings_pack::alert_mask
         , alert::error_notification
