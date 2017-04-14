@@ -44,8 +44,8 @@ namespace {
 		{
 			settings_pack sp;
 			sp.set_bool(settings_pack::allow_multiple_connections_per_ip, true);
-			// sp.set_int(settings_pack::local_upload_rate_limit, 1000000);
-			// sp.set_int(settings_pack::local_download_rate_limit, 1000000);
+			sp.set_int(settings_pack::local_upload_rate_limit, 100000);
+			sp.set_int(settings_pack::local_download_rate_limit, 100000);
 			// std::cout << "applying settings: " << li << std::endl;
 			sp.set_int(settings_pack::alert_mask
         , alert::error_notification
@@ -59,6 +59,9 @@ namespace {
 		libtorrent::session session;
 
 		char* save_path;
+		void set_save_path(char* sp) {
+			save_path = sp;
+		}
 		char* listen_interfaces;
 
 		std::mutex mtx;
@@ -233,7 +236,7 @@ namespace {
 		// f->session->start_dht();
 
 		std::string torrentName = zName;
-		std::cout << "OPEN: " << torrentName << "-" << ctx->save_path << std::endl;
+		// std::cout << "OPEN: " << torrentName << "-" << ctx->save_path << std::endl;
 		// std::string torrentNameOrUrl = torrentName.substr( torrentName.find_last_of("/") + 1 );
 
 		add_torrent_params p;
@@ -292,6 +295,10 @@ extern "C" {
 
 	EXPORT context* new_context(char* save_path) {
 		return new context(save_path);
+	}
+
+	EXPORT void set_ctx_save_path(context* ctx, char* save_path) {
+		ctx->set_save_path(save_path);
 	}
 
 	EXPORT int sqltorrent_init(context* ctx, char* vfsName, int make_default)
@@ -418,11 +425,11 @@ extern "C" {
 		// std::cout << "done, shutting down" << std::endl;
 	}
 
-	EXPORT void query_torrents(session *ses, void (*callback)(const char *data, float progress)) {
+	EXPORT void query_torrents(session *ses, void (*callback)(const char *data, float progress, int download_rate, int upload_rate)) {
 		std::vector<torrent_handle> v = ses->get_torrents();
 		for(torrent_handle th: v) {
 			torrent_status ts = th.status();
-			callback(th.name().c_str(), ts.progress);
+			callback(th.name().c_str(), ts.progress, ts.download_rate, ts.upload_rate);
 		}
 	}
 

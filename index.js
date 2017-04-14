@@ -1,5 +1,6 @@
 var ffi = require('ffi');
 var ref = require('ref')
+var readline = require('readline');
 
 var sqlite3 = 'void' // `sqlite3` is an "opaque" type, so we don't know its layout
   , sqlite3Ptr = ref.refType(sqlite3)
@@ -34,31 +35,45 @@ var sqltorrent = ffi.Library('sqltorrent.dylib', {
   'state_update_alert_msg': ['string', ['pointer']],
 });
 
+if (process.argv.length < 4) {
+  return console.log('pleae provide torrent file path, save path and port')
+}
+
+var torrent = process.argv[2];
+var save_path = process.argv[3];
+var port = process.argv[4]
 
 // TORRENT
 
-var torrent = 'kat.torrent';
+console.log('Opening torrent...')
 
-var save_path1 = 'torrent1/.';
-var ctx1 = sqltorrent.new_context(save_path1);
-sqltorrent.sqltorrent_init(ctx1, 'torrent1', 0); // gonna register a vfs called torrent1
+var stdout = {
+  progress: '',
+  alert: '',
+}
+
+var ctx = sqltorrent.new_context(save_path);
+sqltorrent.sqltorrent_init(ctx, 'torrent', 0); // gonna register a vfs called torrent
+
+var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
+  if (type === 'read_piece_alert')
+    wsSend({
+      alert: type + ' - ' + msg
+    });
+});
+sqltorrent.alert_loop.async(ctx, callback, () => {});
 
 // create a storage area for the db pointer SQLite3 gives us
-var db1 = ref.alloc(sqlite3PtrPtr)
-var open = SQLite3.sqlite3_open_v2.async(torrent, db1, 1, 'torrent1', (err, ret) => {
-  console.log('DB OPENED TORRENT1', ret)
-  if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db1))
+var db = ref.alloc(sqlite3PtrPtr)
+var ready = false;
+var open = SQLite3.sqlite3_open_v2.async(torrent, db, 1, 'torrent', (err, ret) => {
+  ready = true;
+  wsSend({
+    ready: true,
+  })
+  if (ret !== 0) return console.error('error:', SQLite3.sqlite3_errmsg(db))
 });
-var callback = ffi.Callback('void', ['pointer', 'string', 'string'], (alert, msg, type) => {
-  wsSend({ type, payload: msg })
-  // if (type === 'add_torrent_alert') {
-  //   console.log(sqltorrent.alert_error_code(alert));
-  // }
-  // if (type === 'state_update_alert') {
-  //   console.log('TORRENT1', sqltorrent.state_update_alert_msg(alert));
-  // }
-});
-sqltorrent.alert_loop.async(ctx1, callback, () => {});
+
 
 function runQuery(db, query, callback) {
   var rowCount = 0
@@ -66,8 +81,8 @@ function runQuery(db, query, callback) {
     var obj = {}
 
     for (var i = 0; i < cols; i++) {
-      var colName = colv.deref()
-      var colData = argv.deref()
+      var colName = ref.get(colv, ref.sizeof.pointer * i, ref.types.CString);
+      var colData = ref.get(argv, ref.sizeof.pointer * i, ref.types.CString);
       obj[colName] = colData
     }
 
@@ -78,14 +93,27 @@ function runQuery(db, query, callback) {
 
   var b = new Buffer('test')
   SQLite3.sqlite3_exec.async(db, query, callback2, b, null, function (err, ret) {
-    if (err || ret !== 0) return wsSend('error: ' +  SQLite3.sqlite3_errmsg(db));
-    // console.log('Closing...')
-    // SQLite3.sqlite3_close(db)
-    // fs.unlinkSync(dbName)
-    // fin = true
+    if (err || ret !== 0)
+      return wsSend({
+        result: 'error: ' +  SQLite3.sqlite3_errmsg(db)
+      })
+  })
+}
+
+var torrents_callback = ffi.Callback('void', ['string', 'float', 'int', 'int'], (name, progress, download_rate, upload_rate) => {
+  wsSend({
+    progress: name + ' - %' + (progress * 100) + ' - down: ' + (download_rate / 1000) + 'kb/s - up: '  + (upload_rate / 1000) + 'kb/s',
+    ready: ready,
   })
 
-}
+});
+var ses = sqltorrent.get_session(ctx);
+sqltorrent.query_torrents(ses, torrents_callback);
+setInterval(() => {
+  sqltorrent.query_torrents(ses, torrents_callback);
+}, 1000);
+
+
 // WEBSOCKET
 
 var WebSocketServer = require('ws').Server;
@@ -96,7 +124,7 @@ var server = require('http').createServer();
 
 app.use(express.static(path.join(__dirname, '/public')));
 
-var wss = new WebSocketServer({server: server});
+var wss = new WebSocketServer({server: server });
 var ws = null
 wss.on('connection', function (_ws) {
   ws = _ws;
@@ -104,15 +132,19 @@ wss.on('connection', function (_ws) {
   });
 
   ws.on('message', function incoming(message) {
-    runQuery(db1.deref(), message, response => {
-      wsSend(response)
+    runQuery(db.deref(), message, response => {
+      wsSend({
+        result: response
+      })
     })
   });
 });
 
 server.on('request', app);
-server.listen(8080, function () {
-  console.log('Listening on http://localhost:8080');
+server.listen(port, function () {
+  console.log('Listening on http://localhost:'+ port);
+  var spawn = require('child_process').spawn
+  spawn('open', ['http://localhost:'+port]);
 });
 
 function wsSend(str) {
